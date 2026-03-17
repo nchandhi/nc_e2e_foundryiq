@@ -5,28 +5,28 @@
 # Just what you need for: PDF → AI Search → Knowledge Base → Agent → Test
 
 # Azure Authentication
-azure-identity==1.23.0
+azure-identity>=1.19.0
 
 # Azure AI Foundry SDK (agent creation + testing)
-azure-ai-projects==20.0b3
-azure-ai-agents==1.2.0b5
-agent-framework-core==1.0.0rc2
-agent-framework-azure-ai==1.0.0rc2
+azure-ai-projects>=2.0.0
+azure-ai-agents>=1.0.0
+agent-framework-core>=1.0.0rc2
+agent-framework-azure-ai>=1.0.0rc2
 
 # Azure AI Search (preview — required for Foundry IQ Knowledge Base APIs)
-azure-search-documents==11.7.0b2
+azure-search-documents>=11.6.0b8
 
 # OpenAI SDK (for generating embeddings)
-openai==2.8.1
+openai>=1.58.0
 
 # PDF reading (extract text from PDFs for chunking)
-pypdf==5.6.0
+pypdf>=5.0.0
 
 # PDF generation (create sample test PDFs)
-fpdf2==2.8.5
+fpdf2>=2.8.0
 
 # HTTP requests (for REST API calls to create MCP connections)
-requests==2.32.5
+requests>=2.31.0
 
 # Environment variables
-python-dotenv==1.1.0
+python-dotenv>=1.0.0
