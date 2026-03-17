@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+environment:
+  name: contoso-ioc-health-check
+
+location: eastus
+name: contoso-ioc-health-check
+
+requiredVersions:
+  azd: ">= 1.15.0"
+
+metadata:
+  template: contoso-ioc-health-check@1.0
+
+hooks:
+  postprovision:
+    windows:
+      run: |
+        $deployApp = $env:AZURE_ENV_DEPLOY_APP
+
+        if ($deployApp -eq "true") {
+            Write-Host "Web app URL: "
+            Write-Host "$env:WEB_APP_URL" -ForegroundColor Cyan
+        }
+
+        Write-Host ""
+        Write-Host "Next steps:" -ForegroundColor Yellow
+        Write-Host "1. Set up Python environment:"
+        Write-Host "   python -m venv .venv" -ForegroundColor Cyan
+        Write-Host "   .venv\Scripts\activate" -ForegroundColor Cyan
+        Write-Host "   pip install uv && uv pip install -r scripts/requirements.txt" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "2. Build the solution:"
+        Write-Host "   python scripts/00_build_solution.py --from 1" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "3. Test the agent:"
+        Write-Host "   python scripts/06_test_agent.py" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "4. Deploy the app (optional):"
+        Write-Host "   azd env set AZURE_ENV_DEPLOY_APP true" -ForegroundColor Cyan
+        Write-Host "   azd up" -ForegroundColor Cyan
+
+      shell: pwsh
+      continueOnError: false
+      interactive: true
+    posix:
+      run: |
+        if [ "$AZURE_ENV_DEPLOY_APP" = "true" ]; then
+            echo "Web app URL: "
+            echo "$WEB_APP_URL"
+            echo ""
+        fi
+
+        echo ""
+        echo "Next steps:"
+        echo "1. Set up Python environment:"
+        echo "   python -m venv .venv"
+        echo "   source .venv/bin/activate"
+        echo "   pip install uv && uv pip install -r scripts/requirements.txt"
+        echo ""
+        echo "2. Build the solution:"
+        echo "   python scripts/00_build_solution.py --from 1"
+        echo ""
+        echo "3. Test the agent:"
+        echo "   python scripts/06_test_agent.py"
+        echo ""
+        echo "4. Deploy the app (optional):"
+        echo "   azd env set AZURE_ENV_DEPLOY_APP true"
+        echo "   azd up"
+
+      shell: sh
+      continueOnError: false
+      interactive: true

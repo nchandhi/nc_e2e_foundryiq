@@ -1,0 +1,494 @@
+// ========== AI Foundry and Related Resources (Network Isolated) ========== //
+// Same as the original, but with these NETWORK ISOLATION CHANGES:
+//   1. AI Services: publicNetworkAccess → Disabled, networkAcls → Deny
+//   2. AI Search: publicNetworkAccess → disabled
+//   3. Storage Account: publicNetworkAccess → Disabled, networkRules → Deny
+//   4. New output: storageAccountId (needed to create private endpoint in main.bicep)
+
+@description('The name of the solution, used as a base for naming all resources.')
+param solutionName string
+
+@description('The Azure region where resources will be deployed.')
+param solutionLocation string
+
+@description('The deployment type for the GPT model (e.g., Standard, GlobalStandard).')
+param deploymentType string
+
+@description('The name of the GPT model to deploy.')
+param gptModelName string
+
+@description('The version of the GPT model to deploy.')
+param gptModelVersion string
+
+@description('The capacity for the GPT model deployment.')
+param gptDeploymentCapacity int
+
+@description('The name of the embedding model to deploy.')
+param embeddingModel string
+
+@description('The capacity for the embedding model deployment.')
+param embeddingDeploymentCapacity int
+
+@description('The object ID of the managed identity to assign roles to.')
+param managedIdentityObjectId string = ''
+
+@description('The resource ID of an existing Log Analytics workspace. If empty, a new one will be created.')
+param existingLogAnalyticsWorkspaceId string = ''
+
+@description('The principal ID of the user deploying the solution.')
+param deployingUserPrincipalId string = ''
+
+@description('The principal type of the deploying user.')
+@allowed(['User', 'ServicePrincipal'])
+param deployingUserPrincipalType string = 'User'
+
+@description('Location for AI Search service.')
+param searchServiceLocation string = resourceGroup().location
+
+var abbrs = loadJsonContent('./abbreviations.json')
+var aiServicesName = '${abbrs.ai.aiServices}${solutionName}'
+var workspaceName = '${abbrs.managementGovernance.logAnalyticsWorkspace}${solutionName}'
+var applicationInsightsName = '${abbrs.managementGovernance.applicationInsights}${solutionName}'
+var aiProjectName = '${abbrs.ai.aiFoundryProject}${solutionName}'
+var aiSearchName = '${abbrs.ai.aiSearch}${solutionName}'
+var storageRawName = '${abbrs.storage.storageAccount}${toLower(replace(solutionName, '-', ''))}'
+#disable-next-line BCP334
+var storageName = storageRawName
+var aiSearchConnectionName = 'search-connection-${solutionName}'
+var location = solutionLocation
+
+var aiModelDeployments = [
+  {
+    name: gptModelName
+    model: gptModelName
+    sku: {
+      name: deploymentType
+      capacity: gptDeploymentCapacity
+    }
+    version: gptModelVersion
+    raiPolicyName: 'Microsoft.Default'
+  }
+  {
+    name: embeddingModel
+    model: embeddingModel
+    sku: {
+      name: 'GlobalStandard'
+      capacity: embeddingDeploymentCapacity
+    }
+    raiPolicyName: 'Microsoft.Default'
+  }
+]
+
+var useExisting = !empty(existingLogAnalyticsWorkspaceId)
+var existingLawSubscription = useExisting ? split(existingLogAnalyticsWorkspaceId, '/')[2] : ''
+var existingLawResourceGroup = useExisting ? split(existingLogAnalyticsWorkspaceId, '/')[4] : ''
+var existingLawName = useExisting ? split(existingLogAnalyticsWorkspaceId, '/')[8] : ''
+
+// ========== Log Analytics ========== //
+resource existingLogAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = if (useExisting) {
+  name: existingLawName
+  scope: resourceGroup(existingLawSubscription, existingLawResourceGroup)
+}
+
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if (!useExisting) {
+  name: workspaceName
+  location: location
+  properties: {
+    retentionInDays: 30
+    sku: {
+      name: 'PerGB2018'
+    }
+  }
+}
+
+// ========== Application Insights ========== //
+// NOTE: Full App Insights isolation requires Azure Monitor Private Link Scope (AMPLS).
+// That's a separate, more complex setup. For now, ingestion stays public.
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: applicationInsightsName
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Disabled'
+    WorkspaceResourceId: useExisting ? existingLogAnalyticsWorkspace.id : logAnalytics.id
+  }
+}
+
+// ========== Storage Account ========== //
+#disable-next-line BCP334
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: storageName
+  location: location
+  kind: 'StorageV2'
+  sku: { name: 'Standard_LRS' }
+  properties: {
+    accessTier: 'Hot'
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: true
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+    // NETWORK ISOLATION CHANGE: Block all public access. Only accessible via private endpoint.
+    publicNetworkAccess: 'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'    // Allow trusted Azure services (e.g. AI Foundry) through.
+    }
+  }
+}
+
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource defaultContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'default'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// ========== AI Services (Foundry) ========== //
+resource aiServices 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
+  name: aiServicesName
+  location: location
+  sku: {
+    name: 'S0'
+  }
+  kind: 'AIServices'
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    allowProjectManagement: true
+    customSubDomainName: aiServicesName
+    // NETWORK ISOLATION CHANGE: Deny all public traffic. Access only via private endpoint.
+    networkAcls: {
+      defaultAction: 'Deny'
+      virtualNetworkRules: []
+      ipRules: []
+    }
+    publicNetworkAccess: 'Disabled'
+    disableLocalAuth: true
+  }
+}
+
+// ========== Model Deployments ========== //
+@batchSize(1)
+resource aiServicesDeployments 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = [for deployment in aiModelDeployments: {
+  parent: aiServices
+  name: deployment.name
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: deployment.model
+    }
+    raiPolicyName: deployment.raiPolicyName
+  }
+  sku: {
+    name: deployment.sku.name
+    capacity: deployment.sku.capacity
+  }
+}]
+
+// ========== AI Search ========== //
+resource aiSearch 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+  name: aiSearchName
+  location: searchServiceLocation
+  sku: {
+    name: 'basic'
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    replicaCount: 1
+    partitionCount: 1
+    hostingMode: 'default'
+    // NETWORK ISOLATION CHANGE: No public access. Only reachable via private endpoint.
+    publicNetworkAccess: 'disabled'
+    networkRuleSet: {
+      ipRules: []
+    }
+    encryptionWithCmk: {
+      enforcement: 'Unspecified'
+    }
+    disableLocalAuth: true
+    semanticSearch: 'free'
+  }
+}
+
+// ========== AI Project ========== //
+resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
+  parent: aiServices
+  name: aiProjectName
+  location: solutionLocation
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {}
+}
+
+// ========== Connections ========== //
+resource searchConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: aiProject
+  name: aiSearchConnectionName
+  properties: {
+    category: 'CognitiveSearch'
+    target: 'https://${aiSearch.name}.search.windows.net'
+    authType: 'AAD'
+    isSharedToAll: true
+    metadata: {
+      ApiType: 'Azure'
+      ResourceId: aiSearch.id
+    }
+  }
+}
+
+resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: aiProject
+  name: applicationInsightsName
+  properties: {
+    category: 'AppInsights'
+    target: applicationInsights.id
+    authType: 'ApiKey'
+    isSharedToAll: true
+    credentials: {
+      key: applicationInsights.properties.InstrumentationKey
+    }
+    metadata: {
+      ApiType: 'Azure'
+      ResourceId: applicationInsights.id
+    }
+  }
+}
+
+resource storageConnection 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = {
+  parent: aiProject
+  name: 'storage-connection'
+  properties: {
+    category: 'AzureBlob'
+    target: storageAccount.properties.primaryEndpoints.blob
+    authType: 'AAD'
+    isSharedToAll: true
+    metadata: {
+      ResourceId: storageAccount.id
+      AccountName: storageAccount.name
+      ContainerName: 'default'
+    }
+  }
+  dependsOn: [defaultContainer]
+}
+
+// ========== Role Definitions ========== //
+resource azureAIUser 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+}
+
+resource cognitiveServicesOpenAIUser 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+}
+
+resource cognitiveServicesUser 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'a97b65f3-24c7-4388-baec-2e87135dc908'
+}
+
+resource searchIndexDataReader 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
+}
+
+resource searchServiceContributor 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
+}
+
+resource searchIndexDataContributor 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
+}
+
+resource storageBlobDataContributor 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+}
+
+resource storageBlobDataReader 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+}
+
+// ========== Role Assignments: Managed Identity -> AI Services ========== //
+resource assignFoundryRoleToMI 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiServices.id, azureAIUser.id)
+  scope: aiServices
+  properties: {
+    principalId: managedIdentityObjectId
+    roleDefinitionId: azureAIUser.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: AI Search -> OpenAI ========== //
+resource assignOpenAIRoleToAISearch 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiServices.id, cognitiveServicesOpenAIUser.id)
+  scope: aiServices
+  properties: {
+    principalId: aiSearch.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAIUser.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: AI Project -> OpenAI ========== //
+resource assignOpenAIRoleToProject 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiProject.id, cognitiveServicesOpenAIUser.id)
+  scope: aiServices
+  properties: {
+    principalId: aiProject.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAIUser.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: AI Project -> Search ========== //
+resource assignSearchReaderToProject 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiProject.id, searchIndexDataReader.id)
+  scope: aiSearch
+  properties: {
+    principalId: aiProject.identity.principalId
+    roleDefinitionId: searchIndexDataReader.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource assignSearchContributorToProject 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiProject.id, searchServiceContributor.id)
+  scope: aiSearch
+  properties: {
+    principalId: aiProject.identity.principalId
+    roleDefinitionId: searchServiceContributor.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource assignSearchIndexContributorToMI 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, aiProject.id, searchIndexDataContributor.id)
+  scope: aiSearch
+  properties: {
+    principalId: managedIdentityObjectId
+    roleDefinitionId: searchIndexDataContributor.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: AI Project -> Storage ========== //
+resource projectStorageBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, aiProject.id, storageBlobDataContributor.id)
+  properties: {
+    principalId: aiProject.identity.principalId
+    roleDefinitionId: storageBlobDataContributor.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource projectStorageBlobReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, aiProject.id, storageBlobDataReader.id)
+  properties: {
+    principalId: aiProject.identity.principalId
+    roleDefinitionId: storageBlobDataReader.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: AI Search -> Storage ========== //
+resource searchStorageBlobDataReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, aiSearch.id, storageBlobDataReader.id)
+  properties: {
+    principalId: aiSearch.identity.principalId
+    roleDefinitionId: storageBlobDataReader.id
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ========== Role Assignments: Deploying User ========== //
+resource userAIServicesAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiServices
+  name: guid(aiServices.id, deployingUserPrincipalId, cognitiveServicesUser.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: cognitiveServicesUser.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+resource userOpenAIAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiServices
+  name: guid(aiServices.id, deployingUserPrincipalId, cognitiveServicesOpenAIUser.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: cognitiveServicesOpenAIUser.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+resource userAzureAIAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiServices
+  name: guid(aiServices.id, deployingUserPrincipalId, azureAIUser.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: azureAIUser.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+resource userSearchIndexContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiSearch
+  name: guid(aiSearch.id, deployingUserPrincipalId, searchIndexDataContributor.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: searchIndexDataContributor.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+resource userSearchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: aiSearch
+  name: guid(aiSearch.id, deployingUserPrincipalId, searchServiceContributor.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: searchServiceContributor.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+resource userStorageBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, deployingUserPrincipalId, storageBlobDataContributor.id)
+  properties: {
+    principalId: deployingUserPrincipalId
+    roleDefinitionId: storageBlobDataContributor.id
+    principalType: deployingUserPrincipalType
+  }
+}
+
+// ========== Outputs ========== //
+output aiServicesTarget string = aiServices.properties.endpoints['OpenAI Language Model Instance API']
+output aiServicesName string = aiServicesName
+output aiSearchName string = aiSearchName
+output aiSearchId string = aiSearch.id
+output aiSearchTarget string = 'https://${aiSearch.name}.search.windows.net'
+output aiProjectName string = aiProject.name
+output aiSearchConnectionName string = aiSearchConnectionName
+output aiSearchConnectionId string = searchConnection.id
+output applicationInsightsId string = applicationInsights.id
+output projectEndpoint string = aiProject.properties.endpoints['AI Foundry API']
+output applicationInsightsConnectionString string = applicationInsights.properties.ConnectionString
+output aiFoundryResourceId string = aiServices.id
+// NETWORK ISOLATION CHANGE: New output — needed to create the Storage private endpoint.
+output storageAccountId string = storageAccount.id

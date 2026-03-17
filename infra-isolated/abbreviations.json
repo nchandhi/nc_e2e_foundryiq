@@ -1,0 +1,41 @@
+{
+  "ai": {
+    "aiSearch": "srch-",
+    "aiServices": "aisa-",
+    "aiFoundry": "aif-",
+    "aiFoundryProject": "aifp-"
+  },
+  "analytics": {
+    "dataExplorerCluster": "adx",
+    "databricksWorkspace": "dbw-"
+  },
+  "compute": {
+    "appServicePlan": "asp-",
+    "webApp": "app-"
+  },
+  "containers": {
+    "containerRegistry": "cr",
+    "containerAppsEnv": "cae-",
+    "containerApp": "ca-"
+  },
+  "databases": {
+    "cosmosDBDatabase": "cosmos-",
+    "sqlDatabaseServer": "sql-",
+    "sqlDatabase": "sqldb-"
+  },
+  "managementGovernance": {
+    "applicationInsights": "appi-",
+    "logAnalyticsWorkspace": "log-"
+  },
+  "networking": {
+    "virtualNetwork": "vnet-",
+    "networkSecurityGroup": "nsg-"
+  },
+  "security": {
+    "keyVault": "kv-",
+    "managedIdentity": "id-"
+  },
+  "storage": {
+    "storageAccount": "st"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "ai": {
+    "aiSearch": "srch-",
+    "aiServices": "aisa-",
+    "aiFoundry": "aif-",
+    "aiFoundryProject": "aifp-"
+  },
+  "managementGovernance": {
+    "applicationInsights": "appi-",
+    "logAnalyticsWorkspace": "log-"
+  },
+  "networking": {
+    "virtualNetwork": "vnet-",
+    "networkSecurityGroup": "nsg-",
+    "bastionHost": "bas-"
+  },
+  "security": {
+    "keyVault": "kv-",
+    "managedIdentity": "id-"
+  },
+  "storage": {
+    "storageAccount": "st"
+  }
+}

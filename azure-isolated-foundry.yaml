@@ -1,0 +1,35 @@
+# azure-isolated-foundry.yaml
+# Minimal network-isolated deployment: AI Foundry + AI Search + Key Vault + Bastion
+#
+# USAGE:
+#   1. Copy this file to azure.yaml (or rename):
+#        copy azure-isolated-foundry.yaml azure.yaml
+#
+#   2. Set required environment variables:
+#        azd env set AZURE_AI_DEPLOYMENTS_LOCATION swedencentral
+#        azd env set JUMPBOX_PASSWORD "YourSecureP@ssw0rd!"
+#        (or set JUMPBOX_SSH_PUBLIC_KEY instead of password)
+#
+#   3. Deploy:
+#        azd up
+#
+#   4. After deployment, connect to the jump VM through Bastion:
+#        - Azure Portal → Virtual Machines → vm-jump-xxx → Connect → Bastion
+#        - Protocol: RDP (you get a full XFCE desktop with Edge browser)
+#        - Username: azureuser / Password: (the one you set above)
+#
+#   5. On the jump VM, clone this repo and run the scripts:
+#        cd ~ && git clone <your-repo-url>
+#        cd <repo>/scripts
+#        pip install -r requirements.txt
+#        python 01_upload_to_search.py
+#        python 02_create_agent.py
+#        python 03_test_agent.py
+
+name: contoso-ioc-foundry-isolated
+metadata:
+  template: contoso-ioc-foundry-isolated
+infra:
+  provider: bicep
+  path: infra-isolated-foundry
+  module: main

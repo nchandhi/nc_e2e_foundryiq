@@ -1,0 +1,32 @@
+# Foundry Knowledge Base Scripts — Requirements
+# Install with: pip install -r requirements.txt
+#
+# Stripped down from the full accelerator — NO SQL, Fabric, or Cosmos dependencies.
+# Just what you need for: PDF → AI Search → Knowledge Base → Agent → Test
+
+# Azure Authentication
+azure-identity==1.23.0
+
+# Azure AI Foundry SDK (agent creation + testing)
+azure-ai-projects==20.0b3
+azure-ai-agents==1.2.0b5
+agent-framework-core==1.0.0rc2
+agent-framework-azure-ai==1.0.0rc2
+
+# Azure AI Search (preview — required for Foundry IQ Knowledge Base APIs)
+azure-search-documents==11.7.0b2
+
+# OpenAI SDK (for generating embeddings)
+openai==2.8.1
+
+# PDF reading (extract text from PDFs for chunking)
+pypdf==5.6.0
+
+# PDF generation (create sample test PDFs)
+fpdf2==2.8.5
+
+# HTTP requests (for REST API calls to create MCP connections)
+requests==2.32.5
+
+# Environment variables
+python-dotenv==1.1.0

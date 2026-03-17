@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+# ====================================================================
+# NETWORK ISOLATED VERSION
+# To use this instead of the original:
+#   1. Rename azure.yaml → azure-public.yaml
+#   2. Rename azure-isolated.yaml → azure.yaml
+#   3. Run: azd up
+# ====================================================================
+
+environment:
+  name: contoso-ioc-health-check
+
+location: eastus
+name: contoso-ioc-health-check
+
+requiredVersions:
+  azd: ">= 1.15.0"
+
+metadata:
+  template: contoso-ioc-health-check@1.0
+
+# Point azd to the network-isolated infra folder
+infra:
+  path: infra-isolated
+
+hooks:
+  postprovision:
+    windows:
+      run: |
+        $deployApp = $env:AZURE_ENV_DEPLOY_APP
+
+        if ($deployApp -eq "true") {
+            Write-Host "Web app URL (internal only — accessible from inside VNet):"
+            Write-Host "$env:WEB_APP_URL" -ForegroundColor Cyan
+        }
+
+        Write-Host ""
+        Write-Host "NETWORK ISOLATION ENABLED" -ForegroundColor Yellow
+        Write-Host "All services use private endpoints. A jump box VM and Azure Bastion" -ForegroundColor Yellow
+        Write-Host "have been deployed so you can work inside the VNet." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Jump box VM: $env:JUMPBOX_VM_NAME" -ForegroundColor Cyan
+        Write-Host "Bastion:     $env:BASTION_NAME" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Next steps:" -ForegroundColor Yellow
+        Write-Host "1. Connect to the jump box via Bastion:"
+        Write-Host "   Option A: Azure Portal -> VM -> Connect -> Bastion" -ForegroundColor Cyan
+        Write-Host "   Option B: az network bastion ssh --name $env:BASTION_NAME --resource-group $env:RESOURCE_GROUP_NAME --target-resource-id $env:JUMPBOX_VM_ID --auth-type AAD" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "2. On the jump box, clone your repo and set up Python:"
+        Write-Host "   git clone <your-repo-url>" -ForegroundColor Cyan
+        Write-Host "   python3 -m venv .venv" -ForegroundColor Cyan
+        Write-Host "   source .venv/bin/activate" -ForegroundColor Cyan
+        Write-Host "   pip install uv && uv pip install -r scripts/requirements.txt" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "3. Build the solution (from the jump box):"
+        Write-Host "   python scripts/00_build_solution.py --from 1" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "4. Test the agent:"
+        Write-Host "   python scripts/06_test_agent.py" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "5. Deploy the app (optional):"
+        Write-Host "   azd env set AZURE_ENV_DEPLOY_APP true" -ForegroundColor Cyan
+        Write-Host "   azd up" -ForegroundColor Cyan
+
+      shell: pwsh
+      continueOnError: false
+      interactive: true
+    posix:
+      run: |
+        if [ "$AZURE_ENV_DEPLOY_APP" = "true" ]; then
+            echo "Web app URL (internal only — accessible from inside VNet):"
+            echo "$WEB_APP_URL"
+            echo ""
+        fi
+
+        echo ""
+        echo "NETWORK ISOLATION ENABLED"
+        echo "All services use private endpoints. A jump box VM and Azure Bastion"
+        echo "have been deployed so you can work inside the VNet."
+        echo ""
+        echo "Jump box VM: $JUMPBOX_VM_NAME"
+        echo "Bastion:     $BASTION_NAME"
+        echo ""
+        echo "Next steps:"
+        echo "1. Connect to the jump box via Bastion:"
+        echo "   Option A: Azure Portal -> VM -> Connect -> Bastion"
+        echo "   Option B: az network bastion ssh --name $BASTION_NAME --resource-group $RESOURCE_GROUP_NAME --target-resource-id $JUMPBOX_VM_ID --auth-type AAD"
+        echo ""
+        echo "2. On the jump box, clone your repo and set up Python:"
+        echo "   git clone <your-repo-url>"
+        echo "   python3 -m venv .venv"
+        echo "   source .venv/bin/activate"
+        echo "   pip install uv && uv pip install -r scripts/requirements.txt"
+        echo ""
+        echo "3. Build the solution (from the jump box):"
+        echo "   python scripts/00_build_solution.py --from 1"
+        echo ""
+        echo "4. Test the agent:"
+        echo "   python scripts/06_test_agent.py"
+        echo ""
+        echo "5. Deploy the app (optional):"
+        echo "   azd env set AZURE_ENV_DEPLOY_APP true"
+        echo "   azd up"
+
+      shell: sh
+      continueOnError: false
+      interactive: true
