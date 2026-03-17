@@ -206,6 +206,8 @@ module keyVaultModule 'deploy_key_vault.bicep' = {
 // =====================================================================
 
 // PE for AI Services (OpenAI models, embeddings, agent API)
+// IMPORTANT: Needs 3 DNS zones — cognitiveservices + openai + services.ai
+// Without all 3, the VM can't resolve *.openai.azure.com or *.services.ai.azure.com
 module peAiServices 'deploy_private_endpoint.bicep' = {
   name: 'deploy_pe_ai_services'
   params: {
@@ -214,7 +216,11 @@ module peAiServices 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.aiFoundryResourceId
     groupIds: ['account']
-    privateDnsZoneId: dnsZonesModule.outputs.cognitiveServicesZoneId
+    privateDnsZoneIds: [
+      dnsZonesModule.outputs.cognitiveServicesZoneId
+      dnsZonesModule.outputs.openaiZoneId
+      dnsZonesModule.outputs.aiFoundryZoneId
+    ]
   }
 }
 
@@ -227,7 +233,7 @@ module peAiSearch 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.aiSearchId
     groupIds: ['searchService']
-    privateDnsZoneId: dnsZonesModule.outputs.searchZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.searchZoneId]
   }
 }
 
@@ -240,7 +246,7 @@ module peKeyVault 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: keyVaultModule.outputs.vaultId
     groupIds: ['vault']
-    privateDnsZoneId: dnsZonesModule.outputs.keyVaultZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.keyVaultZoneId]
   }
 }
 
@@ -253,7 +259,7 @@ module peStorage 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.storageAccountId
     groupIds: ['blob']
-    privateDnsZoneId: dnsZonesModule.outputs.storageBlobZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.storageBlobZoneId]
   }
 }
 

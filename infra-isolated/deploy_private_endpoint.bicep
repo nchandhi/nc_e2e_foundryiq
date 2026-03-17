@@ -24,8 +24,8 @@ param privateLinkServiceId string
 @description('Group IDs for the private link connection (e.g. ["vault"], ["account"], ["Sql"]).')
 param groupIds array
 
-@description('Resource ID of the private DNS zone for automatic DNS registration.')
-param privateDnsZoneId string
+@description('Resource IDs of the private DNS zones for automatic DNS registration. Most services need 1 zone; AI Services needs 3 (cognitiveservices + openai + services.ai).')
+param privateDnsZoneIds array
 
 // ---------- Private Endpoint ---------- //
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
@@ -48,20 +48,17 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
 }
 
 // ---------- DNS Zone Group ---------- //
-// This automatically creates the DNS record (A record) in the private DNS zone.
-// Without this, you'd have to manually create DNS records for each PE.
+// Creates A records in ALL provided DNS zones.
 resource dnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-01-01' = {
   parent: privateEndpoint
   name: 'default'
   properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: replace(last(split(privateDnsZoneId, '/')), '.', '-')
-        properties: {
-          privateDnsZoneId: privateDnsZoneId
-        }
+    privateDnsZoneConfigs: [for (zoneId, i) in privateDnsZoneIds: {
+      name: replace(last(split(zoneId, '/')), '.', '-')
+      properties: {
+        privateDnsZoneId: zoneId
       }
-    ]
+    }]
   }
 }
 

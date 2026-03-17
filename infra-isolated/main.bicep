@@ -310,7 +310,11 @@ module peAiServices 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.aiFoundryResourceId
     groupIds: ['account']
-    privateDnsZoneId: dnsZonesModule.outputs.cognitiveServicesZoneId
+    privateDnsZoneIds: [
+      dnsZonesModule.outputs.cognitiveServicesZoneId
+      dnsZonesModule.outputs.openaiZoneId
+      dnsZonesModule.outputs.aiFoundryZoneId
+    ]
   }
 }
 
@@ -323,7 +327,7 @@ module peAiSearch 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.aiSearchId
     groupIds: ['searchService']
-    privateDnsZoneId: dnsZonesModule.outputs.searchZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.searchZoneId]
   }
 }
 
@@ -336,7 +340,7 @@ module peStorage 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: aifoundry.outputs.storageAccountId
     groupIds: ['blob']
-    privateDnsZoneId: dnsZonesModule.outputs.storageBlobZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.storageBlobZoneId]
   }
 }
 
@@ -349,7 +353,7 @@ module peKeyVault 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: keyVaultModule.outputs.vaultId
     groupIds: ['vault']
-    privateDnsZoneId: dnsZonesModule.outputs.keyVaultZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.keyVaultZoneId]
   }
 }
 
@@ -362,7 +366,7 @@ module peContainerRegistry 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: containerRegistryModule.outputs.acrId
     groupIds: ['registry']
-    privateDnsZoneId: dnsZonesModule.outputs.containerRegistryZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.containerRegistryZoneId]
   }
 }
 
@@ -375,7 +379,7 @@ module peCosmosDb 'deploy_private_endpoint.bicep' = {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: cosmosDBModule.outputs.cosmosAccountId
     groupIds: ['Sql']
-    privateDnsZoneId: dnsZonesModule.outputs.cosmosDbZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.cosmosDbZoneId]
   }
 }
 
@@ -388,7 +392,7 @@ module peSqlDb 'deploy_private_endpoint.bicep' = if (deploySqlDb) {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: sqlDBModule!.outputs.sqlServerId
     groupIds: ['sqlServer']
-    privateDnsZoneId: dnsZonesModule.outputs.sqlDatabaseZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.sqlDatabaseZoneId]
   }
 }
 
@@ -401,7 +405,7 @@ module peAdx 'deploy_private_endpoint.bicep' = if (deployAdx) {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: adxModule!.outputs.clusterId
     groupIds: ['cluster']
-    privateDnsZoneId: dnsZonesModule.outputs.dataExplorerZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.dataExplorerZoneId]
   }
 }
 
@@ -415,7 +419,7 @@ module peDatabricks 'deploy_private_endpoint.bicep' = if (deployDatabricks) {
     subnetId: vnetModule.outputs.peSubnetId
     privateLinkServiceId: databricksModule!.outputs.workspaceResourceId
     groupIds: ['databricks_ui_api']
-    privateDnsZoneId: dnsZonesModule.outputs.databricksZoneId
+    privateDnsZoneIds: [dnsZonesModule.outputs.databricksZoneId]
   }
 }
 
