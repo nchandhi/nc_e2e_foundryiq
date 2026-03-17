@@ -1,11 +1,11 @@
 """
-00_generate_sample_docs.py — Generate sample PDF documents for testing
+00_generate_sample_docs.py - Generate sample PDF documents for testing
 
 Creates a set of sample IOC (Intelligent Operations Center) policy documents
 as PDF files in data/documents/. These give the Knowledge Base something to
 index and the agent something to answer questions about.
 
-You can skip this script if you have your own PDFs — just place them in
+You can skip this script if you have your own PDFs - just place them in
 data/documents/ and go straight to 01_upload_to_search.py.
 
 Usage:
@@ -80,9 +80,9 @@ def main():
                 "All rotating equipment must be monitored for vibration levels per ISO 10816 standards.\n\n"
                 "Threshold levels:\n"
                 "- Normal: 0 to 4.5 mm/s RMS velocity\n"
-                "- Alert: 4.5 to 11.2 mm/s RMS velocity — investigate within 7 days\n"
-                "- Alarm: 11.2 to 28.0 mm/s RMS velocity — schedule maintenance within 48 hours\n"
-                "- Critical: Above 28.0 mm/s RMS velocity — immediate shutdown required\n\n"
+                "- Alert: 4.5 to 11.2 mm/s RMS velocity - investigate within 7 days\n"
+                "- Alarm: 11.2 to 28.0 mm/s RMS velocity - schedule maintenance within 48 hours\n"
+                "- Critical: Above 28.0 mm/s RMS velocity - immediate shutdown required\n\n"
                 "Baseline readings must be taken within 30 days of installation or overhaul. "
                 "Trending data must be reviewed weekly by the reliability engineering team."
             )),
@@ -132,7 +132,7 @@ def main():
                 "Target alarm rates:\n"
                 "- Steady state: Maximum 6 alarms per operator per hour (average over 24h)\n"
                 "- Upset conditions: Maximum 10 alarms per operator per 10-minute period\n"
-                "- Alarm flood: More than 10 alarms in 10 minutes — automatic suppression activated\n\n"
+                "- Alarm flood: More than 10 alarms in 10 minutes - automatic suppression activated\n\n"
                 "Standing alarms (active > 24 hours) must not exceed 5 at any time. "
                 "All standing alarms must be reviewed weekly in the alarm rationalization meeting."
             )),
@@ -153,9 +153,9 @@ def main():
             )),
             ("3. Alarm Response Procedures", (
                 "For every alarm, operators must follow the Acknowledge-Diagnose-Respond (ADR) cycle:\n\n"
-                "Step 1 — Acknowledge: Operator acknowledges the alarm within the required response time.\n"
-                "Step 2 — Diagnose: Identify the root cause using trend data, process graphics, and SOPs.\n"
-                "Step 3 — Respond: Take corrective action per the Standard Operating Procedure (SOP) "
+                "Step 1 - Acknowledge: Operator acknowledges the alarm within the required response time.\n"
+                "Step 2 - Diagnose: Identify the root cause using trend data, process graphics, and SOPs.\n"
+                "Step 3 - Respond: Take corrective action per the Standard Operating Procedure (SOP) "
                 "linked to the alarm.\n\n"
                 "If the cause cannot be identified within the response window, escalate to the "
                 "shift supervisor. If the alarm persists beyond 2x the response time, a formal "
