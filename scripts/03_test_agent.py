@@ -1,24 +1,23 @@
 """
-03_test_agent.py — Interactive chat with your AI Foundry Agent
+03_test_agent.py - Interactive chat with your AI Foundry Agent
 
 Adapted from the accelerator repo's 08_test_agent.py.
-Simplified: NO SQL, NO Fabric — the agent ONLY uses the Knowledge Base.
-No pyodbc or SQL connection needed.
+Simplified: NO SQL, NO Fabric - the agent ONLY uses Azure AI Search.
+Uses the standard azure-ai-projects thread/run API (no agent_framework needed).
 
 What this script does:
   1. Loads agent config from data/config/agent_ids.json
-  2. Connects to the AI Foundry Agent
+  2. Connects to your AI Foundry Agent via threads API
   3. Starts an interactive chat loop in your terminal
-  4. The agent searches the Knowledge Base to answer your questions
+  4. The agent searches AI Search to answer your questions
 
 Prerequisites:
-  - 01_upload_to_search.py ran (created search index + KB)
+  - 01_upload_to_search.py ran (created search index)
   - 02_create_agent.py ran (created the agent)
 
 Usage:
     python 03_test_agent.py              # Normal mode
-    python 03_test_agent.py -v           # Verbose (show tool calls)
-    python 03_test_agent.py --agent-name MyAgent   # Specify agent name
+    python 03_test_agent.py -v           # Verbose (show run details)
 """
 
 import os
@@ -26,14 +25,10 @@ import sys
 import json
 import re
 import argparse
-import asyncio
-import logging
-import traceback
 
 # Parse arguments first
-parser = argparse.ArgumentParser(description="Test AI Foundry Agent with Knowledge Base")
-parser.add_argument("--agent-name", type=str, help="Agent name to test (default: from agent_ids.json)")
-parser.add_argument("-v", "--verbose", action="store_true", help="Show detailed tool calls and results")
+parser = argparse.ArgumentParser(description="Test AI Foundry Agent with AI Search")
+parser.add_argument("-v", "--verbose", action="store_true", help="Show run details")
 args = parser.parse_args()
 
 VERBOSE = args.verbose
@@ -42,14 +37,8 @@ VERBOSE = args.verbose
 from load_env import load_all_env, get_data_folder
 load_all_env()
 
-from azure.identity.aio import DefaultAzureCredential as AsyncDefaultAzureCredential
-from azure.ai.projects.aio import AIProjectClient
-from agent_framework.azure import AzureAIProjectAgentProvider
-
-# Suppress noisy framework logs unless verbose
-if not VERBOSE:
-    logging.getLogger("agent_framework.azure").setLevel(logging.ERROR)
-    logging.getLogger("azure").setLevel(logging.WARNING)
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
 
 # ============================================================================
 # Configuration
@@ -82,20 +71,19 @@ if not os.path.exists(agent_ids_path):
 with open(agent_ids_path) as f:
     agent_ids = json.load(f)
 
-CHAT_AGENT_NAME = args.agent_name or agent_ids.get("chat_agent_name")
-if not CHAT_AGENT_NAME:
-    print("ERROR: No agent name found")
-    print("       Run 02_create_agent.py first, or use --agent-name")
+AGENT_ID = agent_ids.get("chat_agent_id")
+AGENT_NAME = agent_ids.get("chat_agent_name", "ChatAgent")
+
+if not AGENT_ID:
+    print("ERROR: No agent ID found in agent_ids.json")
+    print("       Run 02_create_agent.py first")
     sys.exit(1)
 
-KB_NAME = agent_ids.get("knowledge_base_name", "unknown")
-
 print(f"\n{'='*60}")
-print("AI Agent Chat (Knowledge Base)")
+print("AI Agent Chat (Azure AI Search)")
 print(f"{'='*60}")
-print(f"Agent          : {CHAT_AGENT_NAME}")
-print(f"Knowledge Base : {KB_NAME}")
-print(f"Endpoint       : {ENDPOINT}")
+print(f"Agent    : {AGENT_NAME} ({AGENT_ID})")
+print(f"Endpoint : {ENDPOINT}")
 print(f"\nType 'quit' to exit, 'help' for sample questions\n")
 
 # ============================================================================
@@ -103,10 +91,10 @@ print(f"\nType 'quit' to exit, 'help' for sample questions\n")
 # ============================================================================
 
 sample_questions = [
-    "What documents are in the knowledge base?",
-    "What are the key policies described in the documents?",
-    "Summarize the main guidelines or procedures.",
-    "What thresholds or limits are defined?",
+    "What are the vibration monitoring thresholds?",
+    "What is the alarm priority matrix?",
+    "What are the emission limits for SO2 and NOx?",
+    "What are the water discharge limits?",
 ]
 
 # Try to load custom questions from config
@@ -129,111 +117,121 @@ def show_help():
     print("\nSample questions to try:")
     for i, q in enumerate(sample_questions, 1):
         print(f"  {i}. {q}")
-    print("\n  All questions are answered using the Knowledge Base.")
+    print("\n  All questions are answered using Azure AI Search.")
     print("  Type a number to use a sample question.\n")
+
+# ============================================================================
+# Initialize Client
+# ============================================================================
+
+credential = DefaultAzureCredential()
+project_client = AIProjectClient(endpoint=ENDPOINT, credential=credential)
+
+# Create a thread (conversation) for multi-turn context
+thread = project_client.agents.create_thread()
+print(f"Thread created: {thread.id}")
+print("-" * 60)
 
 # ============================================================================
 # Chat Function
 # ============================================================================
 
-async def chat(user_message: str, conversation_id: str, agent):
-    """Send a message to the agent and stream the response."""
-    try:
-        text_output = ""
-        citations = []
+def chat(user_message: str):
+    """Send a message to the agent and print the response."""
 
-        async for chunk in agent.run(user_message, stream=True, conversation_id=conversation_id):
-            # Collect citations if available
-            for content in getattr(chunk, "contents", []):
-                annotations = getattr(content, "annotations", [])
-                if annotations:
-                    citations.extend(annotations)
+    # Add user message to the thread
+    project_client.agents.create_message(
+        thread_id=thread.id,
+        role="user",
+        content=user_message,
+    )
 
-            chunk_text = str(chunk.text) if chunk.text else ""
-            # Remove citation markers like 【4:0†source】
-            chunk_text = re.sub(r'【\d+:\d+†[^】]+】', '', chunk_text)
-            if chunk_text:
-                text_output += chunk_text
+    # Run the agent on the thread (processes the message + tool calls)
+    run = project_client.agents.create_and_process_run(
+        thread_id=thread.id,
+        agent_id=AGENT_ID,
+    )
 
-        if text_output:
-            print(f"\nAssistant: {text_output}")
+    if VERBOSE:
+        print(f"\n  [run] status={run.status}, id={run.id}")
 
-        # Show citations in verbose mode
-        if VERBOSE and citations:
-            print("\n  Citations:")
-            seen = set()
-            for c in citations:
-                title = c.get("title", "N/A")
-                if title not in seen:
-                    seen.add(title)
-                    url = c.get("url") or (c.get("additional_properties") or {}).get("get_url", "")
-                    print(f"    - {title}" + (f": {url}" if url else ""))
-
-        return text_output
-
-    except Exception as e:
-        print(f"\nError: {e}")
-        if VERBOSE:
-            traceback.print_exc()
+    if run.status == "failed":
+        print(f"\nError: Agent run failed")
+        if run.last_error:
+            print(f"  {run.last_error.code}: {run.last_error.message}")
         return None
+
+    # Get the latest messages (agent's response)
+    messages = project_client.agents.list_messages(thread_id=thread.id)
+
+    # The first message in the list is the most recent (agent's reply)
+    for msg in messages.data:
+        if msg.role == "assistant":
+            # Extract text from message content
+            text_parts = []
+            for content_block in msg.content:
+                if hasattr(content_block, "text"):
+                    text = content_block.text.value
+                    # Remove citation markers like [doc1] or 【4:0+source】
+                    text = re.sub(r'\u3010\d+:\d+\u2020[^\u3011]+\u3011', '', text)
+                    text_parts.append(text)
+
+                    # Show citations in verbose mode
+                    if VERBOSE and hasattr(content_block.text, "annotations"):
+                        for ann in content_block.text.annotations:
+                            if hasattr(ann, "file_citation"):
+                                print(f"  [citation] {ann.text}")
+
+            if text_parts:
+                response = "\n".join(text_parts)
+                print(f"\nAssistant: {response}")
+                return response
+
+            # Only print the first assistant message (most recent)
+            break
+
+    return None
 
 # ============================================================================
 # Main Chat Loop
 # ============================================================================
 
-async def main():
-    async with (
-        AsyncDefaultAzureCredential() as credential,
-        AIProjectClient(endpoint=ENDPOINT, credential=credential) as project_client,
-    ):
-        # Get agent via provider
-        provider = AzureAIProjectAgentProvider(project_client=project_client)
-        agent = await provider.get_agent(name=CHAT_AGENT_NAME)
-
-        # Create conversation for multi-turn context
-        openai_client = project_client.get_openai_client()
-        conversation = await openai_client.conversations.create()
-
-        print("-" * 60)
-
-        while True:
-            try:
-                user_input = input("\nYou: ").strip()
-
-                if not user_input:
-                    continue
-
-                if user_input.lower() in ("quit", "exit", "q"):
-                    print("Goodbye!")
-                    break
-
-                if user_input.lower() == "help":
-                    show_help()
-                    continue
-
-                # Numbered shortcut for sample questions
-                if user_input.isdigit():
-                    idx = int(user_input) - 1
-                    if 0 <= idx < len(sample_questions):
-                        user_input = sample_questions[idx]
-                        print(f"  -> {user_input}")
-
-                await chat(user_input, conversation.id, agent)
-
-            except KeyboardInterrupt:
-                print("\n\nGoodbye!")
-                break
-            except EOFError:
-                print("\nGoodbye!")
-                break
-
-        # Cleanup
+try:
+    while True:
         try:
-            await openai_client.conversations.delete(conversation_id=conversation.id)
-            print("\nConversation cleaned up.")
-        except Exception:
-            pass
+            user_input = input("\nYou: ").strip()
 
+            if not user_input:
+                continue
 
-if __name__ == "__main__":
-    asyncio.run(main())
+            if user_input.lower() in ("quit", "exit", "q"):
+                print("Goodbye!")
+                break
+
+            if user_input.lower() == "help":
+                show_help()
+                continue
+
+            # Numbered shortcut for sample questions
+            if user_input.isdigit():
+                idx = int(user_input) - 1
+                if 0 <= idx < len(sample_questions):
+                    user_input = sample_questions[idx]
+                    print(f"  -> {user_input}")
+
+            chat(user_input)
+
+        except KeyboardInterrupt:
+            print("\n\nGoodbye!")
+            break
+        except EOFError:
+            print("\nGoodbye!")
+            break
+
+finally:
+    # Cleanup thread
+    try:
+        project_client.agents.delete_thread(thread.id)
+        print("\nThread cleaned up.")
+    except Exception:
+        pass
