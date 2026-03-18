@@ -153,9 +153,8 @@ except Exception as e:
     sys.exit(1)
 
 # Set up Azure AI Search tool using the project connection
-ai_search = AzureAISearchTool()
-ai_search.add_index(
-    connection_name=SEARCH_CONNECTION_NAME,
+ai_search = AzureAISearchTool(
+    index_connection_id=SEARCH_CONNECTION_NAME,
     index_name=INDEX_NAME,
 )
 
